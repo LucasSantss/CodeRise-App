@@ -302,6 +302,22 @@ export function normalizeWebhookProduct(payload) {
  */
 export async function findProductByReference(storeUrl, accessToken, reference, sku) {
   if (!reference && !sku) return null;
+
+  // Estratégia primária: GET /variants/{sku} — busca direta e exata pela
+  // variante (mesmo endpoint usado por stock.js/orders.js), muito mais
+  // confiável do que filtrar /products, já que a Olist nem sempre respeita
+  // os parâmetros de filtro (reference/sku) nesse endpoint — quando ignora,
+  // devolve a primeira página do catálogo inteiro e o produto certo nunca
+  // bate no .find() abaixo, gerando falso "not_found_in_olist".
+  if (sku) {
+    try {
+      const variant = await client.getVariantBySku(storeUrl, accessToken, sku);
+      const productId = variant?.product_id ?? variant?.product?.id ?? variant?.productId ?? null;
+      if (productId) return { id: String(productId), reference: variant?.product?.reference ?? reference ?? null, sku: variant?.sku ?? sku };
+    } catch {}
+  }
+
+  // Fallback: filtro em /products por reference/sku.
   const params = { per_page: 5 };
   if (reference) params.reference = reference;
   if (sku) params.sku = sku;
